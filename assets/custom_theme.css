@@ -1,0 +1,85 @@
+:root{
+  --bg:#000000;
+  --bg-secondary:#202128;
+  --card:#0c0d10;
+  --text:#fafafa;
+  --purple:#6E18FF;
+  --green:#1ee2a5;
+  --orange:#f97316;
+  --gold:#FFD54A;
+}
+
+html, body{
+  background-color: var(--bg) !important;
+  color: var(--text) !important;
+}
+
+/* Headings and labels */
+h1,h2,h3,h4,h5,label{ color: var(--text) !important; }
+
+/* Dash Bootstrap container spacing */
+.container{ background-color: var(--bg); }
+
+/* Graph container tweaks - remove grey background */
+.dash-graph{
+  background-color: transparent !important;
+  border-radius: 8px;
+}
+.js-plotly-plot{
+  padding: 0 !important; /* avoid progressive height growth on re-render */
+}
+
+/* Sliders */
+.rc-slider-rail{ background-color: #3a3b41 !important; }
+.rc-slider-track{ background-color: var(--purple) !important; }
+.rc-slider-handle{ border-color: var(--purple) !important; }
+
+/* Golden bot sliders */
+.golden-slider .rc-slider-track{ background-color: var(--gold) !important; }
+.golden-slider .rc-slider-handle{ border-color: var(--gold) !important; }
+
+/* Dropdown */
+.Select-control{ background-color: var(--card) !important; color: var(--text) !important; }
+.Select-menu-outer{ background-color: var(--bg-secondary) !important; color: var(--text) !important; }
+.Select-value-label{ color: var(--text) !important; }
+
+/* Cards (if used) */
+.card{ background-color: var(--card) !important; color: var(--text) !important; }
+
+/* Metric cards */
+.metric-card{
+  background-color: var(--card) !important;
+  color: var(--text) !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+}
+.metric-title{ font-size: 0.9rem; opacity: 0.85; }
+.metric-value{ font-size: 2rem; font-weight: 700; }
+.metric-subtext{ font-size: 0.8rem; opacity: 0.65; }
+.page-title{ color: var(--text) !important; }
+
+/* Tab styling for better visibility */
+.tabs-container .tab {
+  background-color: var(--bg-secondary) !important;
+  color: var(--text) !important;
+  border: 1px solid #3a3b41 !important;
+  border-bottom: none !important;
+  padding: 12px 24px !important;
+  font-weight: 500 !important;
+  transition: all 0.2s ease !important;
+}
+
+.tabs-container .tab:hover {
+  background-color: #2a2b31 !important;
+  border-color: var(--purple) !important;
+}
+
+.tabs-container .tab--selected {
+  background-color: var(--purple) !important;
+  color: white !important;
+  border-color: var(--purple) !important;
+  font-weight: 600 !important;
+}
+
+.tabs-container {
+  border-bottom: 2px solid #3a3b41 !important;
+}
