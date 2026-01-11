@@ -304,16 +304,8 @@ def calculate_uw_uptime(
     }
 
 
-# Register page only when used in multi-page app (not in standalone mode)
-# Check if we're running in a multi-page Dash app context
-try:
-    import sys
-    # Only register if imported as a page module AND dash app already exists
-    if 'pages' in __name__ and not any('gunicorn' in arg for arg in sys.argv):
-        dash.register_page(__name__, path="/perma-calc-new", name="UW PermaCalc (New)", order=6)
-except Exception:
-    # Skip registration if there's any issue (standalone mode)
-    pass
+# Note: dash.register_page() is NOT called in standalone mode
+# This file runs as an independent Dash app, not as part of a multi-page app
 
 
 def _downsample_for_plot(df: pd.DataFrame, max_points: int = 600) -> pd.DataFrame:
@@ -1355,3 +1347,4 @@ else:
     
     app.layout = layout
     server = app.server  # Expose server for gunicorn
+
