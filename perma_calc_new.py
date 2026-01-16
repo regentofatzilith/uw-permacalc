@@ -339,8 +339,8 @@ def calculate_uw_uptime(
     }
 
 
-# Register page for multi-page Dash app
-dash.register_page(__name__, path="/perma-calc-new", name="UW PermaCalc (New)", order=6)
+# NOTE: For Render deployment, we do NOT use dash.register_page()
+# This is a standalone app, not part of a multi-page application
 
 
 def _downsample_for_plot(df: pd.DataFrame, max_points: int = 600) -> pd.DataFrame:
