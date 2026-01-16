@@ -75,6 +75,7 @@ UW_CONFIG = {
         "color_hex": "#9933FF",
         "color_rgba": "rgba(153, 51, 255, 0.8)",
         "color_rgba_light": "rgba(153, 51, 255, 0.6)",
+        "can_queue": True,
     },
     "Golden Tower": {
         "cooldown": 170,
@@ -82,6 +83,7 @@ UW_CONFIG = {
         "color_hex": "#FF6600",
         "color_rgba": "rgba(255, 102, 0, 0.8)",
         "color_rgba_light": "rgba(255, 102, 0, 0.6)",
+        "can_queue": True,
     },
     "Death Wave": {
         "cooldown": 170,
@@ -89,6 +91,7 @@ UW_CONFIG = {
         "color_hex": "#FF0000",
         "color_rgba": "rgba(255, 0, 0, 0.8)",
         "color_rgba_light": "rgba(255, 0, 0, 0.6)",
+        "can_queue": False,
     },
     "Chrono Field": {
         "cooldown": 180,
@@ -96,6 +99,7 @@ UW_CONFIG = {
         "color_hex": "#00FFFF",
         "color_rgba": "rgba(0, 255, 255, 0.8)",
         "color_rgba_light": "rgba(0, 255, 255, 0.6)",
+        "can_queue": False,
     },
     "Golden Bot": {
         "cooldown": 100,
@@ -103,11 +107,36 @@ UW_CONFIG = {
         "color_hex": "#FFD700",
         "color_rgba": "rgba(255, 215, 0, 0.8)",
         "color_rgba_light": "rgba(255, 215, 0, 0.6)",
+        "can_queue": False,
+    },
+    "Smart Missiles": {
+        "cooldown": 120,
+        "duration": 15,
+        "color_hex": "#00FF00",
+        "color_rgba": "rgba(0, 255, 0, 0.8)",
+        "color_rgba_light": "rgba(0, 255, 0, 0.6)",
+        "can_queue": False,
+    },
+    "Inner Land Mines": {
+        "cooldown": 130,
+        "duration": 25,
+        "color_hex": "#DC143C",
+        "color_rgba": "rgba(220, 20, 60, 0.8)",
+        "color_rgba_light": "rgba(220, 20, 60, 0.6)",
+        "can_queue": False,
+    },
+    "Poison Swamp": {
+        "cooldown": 140,
+        "duration": 30,
+        "color_hex": "#32CD32",
+        "color_rgba": "rgba(50, 205, 50, 0.8)",
+        "color_rgba_light": "rgba(50, 205, 50, 0.6)",
+        "can_queue": False,
     },
 }
 
 # UW order for consistent display
-UW_ORDER = ["Black Hole", "Golden Tower", "Death Wave", "Chrono Field", "Golden Bot"]
+UW_ORDER = ["Black Hole", "Golden Tower", "Death Wave", "Chrono Field", "Golden Bot", "Smart Missiles", "Inner Land Mines", "Poison Swamp"]
 
 
 # ============================================================================
@@ -197,6 +226,7 @@ def calculate_uw_uptime(
     package_reduction_series: np.ndarray | None = None,
     is_boss_package_series: np.ndarray | None = None,
     wave_time: float = 30.140,
+    can_queue: bool = True,
 ) -> Union[pd.DataFrame, Dict[str, Any]]:
     """Calculate UW uptime over total_time given cooldown and duration.
 
@@ -207,6 +237,7 @@ def calculate_uw_uptime(
         return_df: If True, return a pandas DataFrame with per-second details.
         package_reduction_series: Optional precomputed package reductions (shared across UWs).
         wave_time: Time per wave in seconds.
+        can_queue: If True, activations stack duration (BH, GT). If False, only reset cooldown.
 
     Returns:
         If return_df is False: dict with summary + series (lists).
@@ -246,7 +277,7 @@ def calculate_uw_uptime(
     # 3. Check activation
     # 4. Record state
     cooldown_remaining_val = float(uw_cooldown)
-    active_remaining_val = float(uw_duration)
+    active_remaining_val = 0.0  # UW starts inactive
 
     for t in timeline:
         pr = float(package_reduction_series[t])
@@ -254,31 +285,35 @@ def calculate_uw_uptime(
         # Calculate wave number
         wave_number[t] = int(t / wave_time) + 1
 
-        # Step 1: Decrement cooldown timer (normal time passage)
+        # Step 1: Decrement cooldown timer (normal time passage - runs always)
         cooldown_remaining_val -= 1
 
         # Step 2: Apply package reduction
         if pr > 0:
             cooldown_remaining_val -= pr
-        
-        # Clamp to 0 if we're at or below 0 (before recording the minimum)
-        cooldown_before_activation = max(0.0, cooldown_remaining_val)
 
         # Step 3: Trigger activation(s) if cooldown hits or overshoots 0
         # The overshoot amount carries over to reduce the next cooldown
-        while cooldown_remaining_val <= 0:
-            active_remaining_val += uw_duration
-            cooldown_remaining_val += uw_cooldown  # Add full cooldown duration back
+        if can_queue:
+            # BH and GT: Queue activations (stack duration)
+            while cooldown_remaining_val <= 0:
+                active_remaining_val += uw_duration
+                cooldown_remaining_val += uw_cooldown  # Add full cooldown duration back
+        else:
+            # All other UWs: Single activation, reset cooldown
+            if cooldown_remaining_val <= 0:
+                active_remaining_val = uw_duration  # Reset to full duration
+                cooldown_remaining_val += uw_cooldown
 
         # Step 4: Record state at this second (post-decrement, post-package, post-activation)
-        cooldown_remaining[t] = cooldown_before_activation  # Record the 0 or positive value before reset
+        cooldown_remaining[t] = max(0.0, cooldown_remaining_val)
         active_remaining[t] = active_remaining_val
         remaining_active_time[t] = active_remaining_val
         is_active[t] = active_remaining_val > 0
 
         # Decrement active time if UW is active
         if active_remaining_val > 0:
-            active_remaining_val -= 1
+            active_remaining_val = max(0.0, active_remaining_val - 1)
 
     perma_result = bool(np.all(is_active))
 
@@ -304,8 +339,8 @@ def calculate_uw_uptime(
     }
 
 
-# Note: dash.register_page() is NOT called in standalone mode
-# This file runs as an independent Dash app, not as part of a multi-page app
+# Register page for multi-page Dash app
+dash.register_page(__name__, path="/perma-calc-new", name="UW PermaCalc (New)", order=6)
 
 
 def _downsample_for_plot(df: pd.DataFrame, max_points: int = 600) -> pd.DataFrame:
@@ -419,7 +454,7 @@ def _calculate_uptime_downtime_stats(df: pd.DataFrame) -> Dict[str, Union[float,
     }
 
 
-def _make_uw_figure(df: pd.DataFrame, title: str, uw_color: str = "rgba(0, 176, 246, 0.8)") -> go.Figure:
+def _make_uw_figure(df: pd.DataFrame, title: str, uw_color: str = "rgba(0, 176, 246, 0.8)", show_cooldown: bool = True) -> go.Figure:
     # Downsample for faster rendering while keeping important events
     df_plot = _downsample_for_plot(df, max_points=800)
     
@@ -468,17 +503,18 @@ def _make_uw_figure(df: pd.DataFrame, title: str, uw_color: str = "rgba(0, 176, 
         )
     )
     
-    # Downtime trace (grey line chart)
-    fig.add_trace(
-        go.Scatter(
-            x=df_plot["t"],
-            y=downtime_y,
-            mode="lines",
-            name="Downtime",
-            line=dict(color="rgba(128, 128, 128, 0.8)", width=1),
-            hovertemplate="t=%{x}s<br>time=%{y}s<extra></extra>",
+    # Downtime trace (grey line chart) - only show if show_cooldown is True
+    if show_cooldown:
+        fig.add_trace(
+            go.Scatter(
+                x=df_plot["t"],
+                y=downtime_y,
+                mode="lines",
+                name="Downtime",
+                line=dict(color="rgba(128, 128, 128, 0.8)", width=1),
+                hovertemplate="t=%{x}s<br>time=%{y}s<extra></extra>",
+            )
         )
-    )
     
     # No activation periods (thick red line at y=0)
     # Find continuous segments where is_active is False
@@ -503,29 +539,31 @@ def _make_uw_figure(df: pd.DataFrame, title: str, uw_color: str = "rgba(0, 176, 
         )
     
     # Add vertical segments for package reductions on cooldown (light green) - drawn BEFORE markers
-    for i, pkg_time in enumerate(package_times):
-        pkg_idx = np.where(df_plot["t"] == pkg_time)[0]
-        if len(pkg_idx) > 0:
-            idx = pkg_idx[0]
-            # Get the actual cooldown_remaining value at this point
-            pkg_reduction = package_values[i]
-            cooldown_after = df_plot.iloc[idx]["cooldown_remaining"]
-            cooldown_before = cooldown_after + pkg_reduction
-            
-            # Plot as negative values (cooldown portion)
-            y_after = -cooldown_after
-            y_before = -cooldown_before
-            
-            fig.add_trace(
-                go.Scatter(
-                    x=[pkg_time, pkg_time],
-                    y=[y_before, y_after],
-                    mode="lines",
-                    line=dict(color="rgba(144, 238, 144, 0.8)", width=2),
-                    showlegend=False,
-                    hoverinfo="skip",
+    # Only show if show_cooldown is True
+    if show_cooldown:
+        for i, pkg_time in enumerate(package_times):
+            pkg_idx = np.where(df_plot["t"] == pkg_time)[0]
+            if len(pkg_idx) > 0:
+                idx = pkg_idx[0]
+                # Get the actual cooldown_remaining value at this point
+                pkg_reduction = package_values[i]
+                cooldown_after = df_plot.iloc[idx]["cooldown_remaining"]
+                cooldown_before = cooldown_after + pkg_reduction
+                
+                # Plot as negative values (cooldown portion)
+                y_after = -cooldown_after
+                y_before = -cooldown_before
+                
+                fig.add_trace(
+                    go.Scatter(
+                        x=[pkg_time, pkg_time],
+                        y=[y_before, y_after],
+                        mode="lines",
+                        line=dict(color="rgba(144, 238, 144, 0.8)", width=2),
+                        showlegend=False,
+                        hoverinfo="skip",
+                    )
                 )
-            )
     
     # Package markers - split into boss and regular packages (drawn AFTER green lines)
     is_boss_at_packages = df_plot.loc[package_mask, "is_boss_package"].to_numpy()
@@ -578,38 +616,185 @@ def _make_uw_figure(df: pd.DataFrame, title: str, uw_color: str = "rgba(0, 176, 
     return fig
 
 
-def _make_sync_figure(results: Dict[str, pd.DataFrame]) -> go.Figure:
-    """Create a stacked area chart showing active UWs (1 if active, 0 if not)."""
+def _make_sync_figure(results: Dict[str, pd.DataFrame], selected_uw: str | None = None) -> go.Figure:
+    """Create a swim lane chart showing active UWs as horizontal bars.
+    
+    If selected_uw is provided, shows segments synced with the selected UW as solid color,
+    and unsynced segments as 30% transparent.
+    """
+    # DEBUG: Uncomment to troubleshoot sync chart rendering
+    # print(f"[DEBUG] _make_sync_figure called with selected_uw={selected_uw}")
     fig = go.Figure()
+    
+    # Assign each UW a vertical position (swim lane)
+    uw_positions = {uw_name: i for i, uw_name in enumerate(UW_ORDER)}
+    bar_height = 0.8  # Height of each swim lane bar
+    
+    # Get the selected UW's active status for sync checking
+    selected_active = None
+    if selected_uw and selected_uw in results:
+        selected_active = np.asarray(results[selected_uw]["is_active"].values, dtype=bool)
+        # DEBUG: Uncomment to see active period counts
+        # print(f"[DEBUG] Selected UW '{selected_uw}' active periods: {np.sum(selected_active)} seconds out of {len(selected_active)}")
+    
+    shapes = []
     
     for uw_name in UW_ORDER:
         if uw_name in results:
             df = results[uw_name]
-            # Use full data for smooth stacked visualization
-            active_values = df["is_active"].astype(int)
+            y_position = uw_positions[uw_name]
             
+            # Find continuous active segments
+            is_active = np.asarray(df["is_active"].values, dtype=bool)
+            t_values = df["t"].values
+            
+            # Find start and end of each active segment
+            # Add padding to detect edges
+            is_active_padded = np.concatenate([np.array([False]), is_active, np.array([False])])
+            diff = np.diff(is_active_padded.astype(int))
+            
+            starts = np.where(diff == 1)[0]  # Transitions from False to True
+            ends = np.where(diff == -1)[0]   # Transitions from True to False
+            
+            # Create shapes for each active segment
+            for start_idx, end_idx in zip(starts, ends):
+                # end_idx points to first False, so actual end is end_idx - 1
+                t_start = t_values[start_idx]
+                t_end = t_values[end_idx - 1] + 1  # +1 to extend to end of that second
+                
+                # Determine if this segment is synced with selected UW
+                if selected_active is not None:
+                    # Split segment into synced and unsynced parts
+                    segment_active = np.asarray(is_active[start_idx:end_idx])
+                    segment_selected = np.asarray(selected_active[start_idx:end_idx])
+                    
+                    # Find where both are active (synced) vs only this UW is active (unsynced)
+                    both_active = segment_active & segment_selected
+                    only_this_active = segment_active & ~segment_selected
+                    
+                    # Create synced segments (solid color)
+                    both_padded = np.concatenate([np.array([False]), both_active, np.array([False])])
+                    both_diff = np.diff(both_padded.astype(int))
+                    both_starts = np.where(both_diff == 1)[0]
+                    both_ends = np.where(both_diff == -1)[0]
+                    
+                    for sync_start, sync_end in zip(both_starts, both_ends):
+                        abs_start = start_idx + sync_start
+                        abs_end = start_idx + sync_end - 1
+                        shapes.append(
+                            dict(
+                                type="rect",
+                                x0=t_values[abs_start],
+                                x1=t_values[abs_end] + 1,
+                                y0=y_position - bar_height/2,
+                                y1=y_position + bar_height/2,
+                                fillcolor=UW_CONFIG[uw_name]["color_hex"],
+                                line=dict(width=0),
+                                layer="below",
+                            )
+                        )
+                    
+                    # Create unsynced segments (30% transparent)
+                    only_padded = np.concatenate([np.array([False]), only_this_active, np.array([False])])
+                    only_diff = np.diff(only_padded.astype(int))
+                    only_starts = np.where(only_diff == 1)[0]
+                    only_ends = np.where(only_diff == -1)[0]
+                    
+                    for unsync_start, unsync_end in zip(only_starts, only_ends):
+                        abs_start = start_idx + unsync_start
+                        abs_end = start_idx + unsync_end - 1
+                        # Convert hex to rgba with 30% opacity
+                        hex_color = UW_CONFIG[uw_name]["color_hex"]
+                        r = int(hex_color[1:3], 16)
+                        g = int(hex_color[3:5], 16)
+                        b = int(hex_color[5:7], 16)
+                        rgba_color = f"rgba({r}, {g}, {b}, 0.3)"
+                        
+                        shapes.append(
+                            dict(
+                                type="rect",
+                                x0=t_values[abs_start],
+                                x1=t_values[abs_end] + 1,
+                                y0=y_position - bar_height/2,
+                                y1=y_position + bar_height/2,
+                                fillcolor=rgba_color,
+                                line=dict(width=0),
+                                layer="below",
+                            )
+                        )
+                else:
+                    # No selection - show all as solid
+                    shapes.append(
+                        dict(
+                            type="rect",
+                            x0=t_start,
+                            x1=t_end,
+                            y0=y_position - bar_height/2,
+                            y1=y_position + bar_height/2,
+                            fillcolor=UW_CONFIG[uw_name]["color_hex"],
+                            line=dict(width=0),
+                            layer="below",
+                        )
+                    )
+            
+            # Add invisible trace for legend
             fig.add_trace(
                 go.Scatter(
-                    x=df["t"],
-                    y=active_values,
-                    mode="none",  # No line, just fill
+                    x=[None],
+                    y=[None],
+                    mode="markers",
+                    marker=dict(size=10, color=UW_CONFIG[uw_name]["color_hex"], symbol="square"),
                     name=uw_name,
-                    stackgroup="one",
-                    fillcolor=UW_CONFIG[uw_name]["color_rgba_light"],
-                    groupnorm='',  # Don't normalize to percentage
+                    showlegend=True,
                 )
             )
     
+    # Calculate sync percentages for y-axis labels
+    y_axis_labels = {}
+    chart_title = "Sync Chart: Active UWs"
+    
+    if selected_active is not None and selected_uw:
+        chart_title = f"Sync Chart: UWs sync with {selected_uw}"
+        
+        # Calculate selected UW's total active time (denominator for all sync percentages)
+        selected_uw_active_seconds = np.sum(selected_active)
+        
+        for uw_name in UW_ORDER:
+            if uw_name in results:
+                uw_active = np.asarray(results[uw_name]["is_active"].values, dtype=bool)
+                # Calculate sync: when selected UW is active, what % of that time is this UW also active?
+                both_active = uw_active & selected_active
+                sync_seconds = np.sum(both_active)
+                
+                if selected_uw_active_seconds > 0:
+                    sync_percentage = (sync_seconds / selected_uw_active_seconds) * 100
+                    y_axis_labels[uw_name] = f"{uw_name} (Sync: {sync_percentage:.1f}%)"
+                else:
+                    y_axis_labels[uw_name] = f"{uw_name} (Sync: 0%)"
+            else:
+                y_axis_labels[uw_name] = uw_name
+    else:
+        # No selection - just use UW names
+        for uw_name in UW_ORDER:
+            y_axis_labels[uw_name] = uw_name
+    
     fig.update_layout(
         template="plotly_dark",
-        title="Sync Chart: Active UWs",
+        title=chart_title,
         xaxis_title="t (seconds)",
         yaxis=dict(
-            showticklabels=False,
-            showgrid=False,
+            tickmode='array',
+            tickvals=list(uw_positions.values()),
+            ticktext=[y_axis_labels[uw] for uw in UW_ORDER],
+            showgrid=True,
+            gridcolor='rgba(128,128,128,0.2)',
             zeroline=False,
-            color='#111',  # Hide by making same color as background
         ),
+        xaxis=dict(
+            showgrid=True,
+            gridcolor='rgba(128,128,128,0.2)',
+        ),
+        shapes=shapes,
         legend=dict(
             orientation="h",
             yanchor="top",
@@ -617,8 +802,10 @@ def _make_sync_figure(results: Dict[str, pd.DataFrame]) -> go.Figure:
             xanchor="center",
             x=0.5
         ),
-        margin=dict(l=50, r=100, t=50, b=80),  # Match detail chart margins
+        margin=dict(l=150, r=50, t=50, b=80),  # Wider left margin for UW names
         showlegend=True,
+        hovermode='x unified',
+        uirevision=selected_uw,  # Force re-render when selection changes
     )
     return fig
 
@@ -871,7 +1058,54 @@ layout = html.Div(
                                 ],
                                 width=2,
                             ),
+                            dbc.Col(
+                                [
+                                    dbc.Label("Smart Missiles Cooldown (s)"),
+                                    dbc.Input(id="uw-sm-cooldown", type="number", value=120, step=0.1),
+                                ],
+                                width=2,
+                            ),
+                            dbc.Col(
+                                [
+                                    dbc.Label("Smart Missiles Duration (s)"),
+                                    dbc.Input(id="uw-sm-duration", type="number", value=15, step=0.1),
+                                ],
+                                width=2,
+                            ),
                         ],
+                    ),
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                [
+                                    dbc.Label("Inner Land Mines Cooldown (s)"),
+                                    dbc.Input(id="uw-ilm-cooldown", type="number", value=130, step=0.1),
+                                ],
+                                width=2,
+                            ),
+                            dbc.Col(
+                                [
+                                    dbc.Label("Inner Land Mines Duration (s)"),
+                                    dbc.Input(id="uw-ilm-duration", type="number", value=25, step=0.1),
+                                ],
+                                width=2,
+                            ),
+                            dbc.Col(
+                                [
+                                    dbc.Label("Poison Swamp Cooldown (s)"),
+                                    dbc.Input(id="uw-ps-cooldown", type="number", value=140, step=0.1),
+                                ],
+                                width=2,
+                            ),
+                            dbc.Col(
+                                [
+                                    dbc.Label("Poison Swamp Duration (s)"),
+                                    dbc.Input(id="uw-ps-duration", type="number", value=30, step=0.1),
+                                ],
+                                width=2,
+                            ),
+                        ],
+                        className="mt-3",
                     ),
                 ]
             ),
@@ -929,6 +1163,33 @@ layout = html.Div(
                 ], width=12, md=6, lg=4),
                 dbc.Col([
                     dbc.Card([dbc.CardBody([
+                        html.H6('Smart Missiles', className='card-title', style={'marginBottom': '0.5rem'}),
+                        html.Div(id='stats-sm-params', style={'color': '#6c757d', 'fontSize': '0.8rem', 'marginBottom': '0.5rem'}),
+                        html.Div(id='stats-sm-uptime', style={'fontSize': '1rem', 'marginBottom': '0.25rem'}),
+                        html.Div(id='stats-sm-downtime', style={'color': '#999', 'fontSize': '0.85rem', 'marginBottom': '0.25rem'}),
+                        html.Div(id='stats-sm-interval', style={'color': '#999', 'fontSize': '0.85rem'}),
+                    ])], id='stats-sm-card', className='mb-2'),
+                ], width=12, md=6, lg=4),
+                dbc.Col([
+                    dbc.Card([dbc.CardBody([
+                        html.H6('Inner Land Mines', className='card-title', style={'marginBottom': '0.5rem'}),
+                        html.Div(id='stats-ilm-params', style={'color': '#6c757d', 'fontSize': '0.8rem', 'marginBottom': '0.5rem'}),
+                        html.Div(id='stats-ilm-uptime', style={'fontSize': '1rem', 'marginBottom': '0.25rem'}),
+                        html.Div(id='stats-ilm-downtime', style={'color': '#999', 'fontSize': '0.85rem', 'marginBottom': '0.25rem'}),
+                        html.Div(id='stats-ilm-interval', style={'color': '#999', 'fontSize': '0.85rem'}),
+                    ])], id='stats-ilm-card', className='mb-2'),
+                ], width=12, md=6, lg=4),
+                dbc.Col([
+                    dbc.Card([dbc.CardBody([
+                        html.H6('Poison Swamp', className='card-title', style={'marginBottom': '0.5rem'}),
+                        html.Div(id='stats-ps-params', style={'color': '#6c757d', 'fontSize': '0.8rem', 'marginBottom': '0.5rem'}),
+                        html.Div(id='stats-ps-uptime', style={'fontSize': '1rem', 'marginBottom': '0.25rem'}),
+                        html.Div(id='stats-ps-downtime', style={'color': '#999', 'fontSize': '0.85rem', 'marginBottom': '0.25rem'}),
+                        html.Div(id='stats-ps-interval', style={'color': '#999', 'fontSize': '0.85rem'}),
+                    ])], id='stats-ps-card', className='mb-2'),
+                ], width=12, md=6, lg=4),
+                dbc.Col([
+                    dbc.Card([dbc.CardBody([
                         html.H6('Perma Calc Details', className='card-title', style={'marginBottom': '0.5rem'}),
                         html.Div(id='sim-details-wave-time', style={'color': '#999', 'fontSize': '0.85rem', 'marginBottom': '0.25rem'}),
                         html.Div(id='sim-details-total-time', style={'color': '#999', 'fontSize': '0.85rem', 'marginBottom': '0.25rem'}),
@@ -952,12 +1213,25 @@ layout = html.Div(
                         {'label': 'Death Wave', 'value': 'Death Wave'},
                         {'label': 'Chrono Field', 'value': 'Chrono Field'},
                         {'label': 'Golden Bot', 'value': 'Golden Bot'},
+                        {'label': 'Smart Missiles', 'value': 'Smart Missiles'},
+                        {'label': 'Inner Land Mines', 'value': 'Inner Land Mines'},
+                        {'label': 'Poison Swamp', 'value': 'Poison Swamp'},
                     ],
                     value='Chrono Field',
                     clearable=False,
                     className='mb-3'
                 ),
             ], width=12, md=4, lg=3),
+            dbc.Col([
+                html.Label('Display Options:', className='mb-2'),
+                dbc.Checklist(
+                    id='uw-show-cooldown',
+                    options=[{'label': ' Show Cooldown', 'value': 'show'}],
+                    value=['show'],
+                    switch=True,
+                    className='mt-4'
+                ),
+            ], width=12, md=3, lg=2),
             dbc.Col([
                 html.Label('Re-randomize Packages:', className='mb-2'),
                 dbc.Button(
@@ -1008,6 +1282,12 @@ def update_random_seed(n_clicks):
     Input("uw-cf-duration", "value"),
     Input("uw-gb-cooldown", "value"),
     Input("uw-gb-duration", "value"),
+    Input("uw-sm-cooldown", "value"),
+    Input("uw-sm-duration", "value"),
+    Input("uw-ilm-cooldown", "value"),
+    Input("uw-ilm-duration", "value"),
+    Input("uw-ps-cooldown", "value"),
+    Input("uw-ps-duration", "value"),
     Input("uw-random-seed", "data"),
 )
 def calculate_simulations(
@@ -1024,6 +1304,9 @@ def calculate_simulations(
     dw_cooldown, dw_duration,
     cf_cooldown, cf_duration,
     gb_cooldown, gb_duration,
+    sm_cooldown, sm_duration,
+    ilm_cooldown, ilm_duration,
+    ps_cooldown, ps_duration,
     random_seed,
 ):
     """Calculate simulation data for all UWs and return serializable results."""
@@ -1082,16 +1365,19 @@ def calculate_simulations(
     
     # Generate package reductions for each UW
     uw_configs = [
-        ("Black Hole", (bh_cooldown or 46) + bc_cooldown, (bh_duration or 34) + bh_perk_duration, base_pkg_reduction),
-        ("Golden Tower", (gt_cooldown or 170) + bc_cooldown, gt_duration or 45, base_pkg_reduction),
-        ("Death Wave", (dw_cooldown or 170) + bc_cooldown, (dw_duration or 20) + dw_perk_duration, base_pkg_reduction),
-        ("Chrono Field", (cf_cooldown or 180) + bc_cooldown, (cf_duration or 28) + cf_perk_duration, base_pkg_reduction),
-        ("Golden Bot", (gb_cooldown or 100) + bc_cooldown, gb_duration or 24.5, 0),  # No GC bonus
+        ("Black Hole", (bh_cooldown or 46) + bc_cooldown, (bh_duration or 34) + bh_perk_duration, base_pkg_reduction, True),
+        ("Golden Tower", (gt_cooldown or 170) + bc_cooldown, gt_duration or 45, base_pkg_reduction, True),
+        ("Death Wave", (dw_cooldown or 170) + bc_cooldown, (dw_duration or 20) + dw_perk_duration, base_pkg_reduction, False),
+        ("Chrono Field", (cf_cooldown or 180) + bc_cooldown, (cf_duration or 28) + cf_perk_duration, base_pkg_reduction, False),
+        ("Golden Bot", (gb_cooldown or 100) + bc_cooldown, gb_duration or 24.5, 0, False),  # No GC bonus
+        ("Smart Missiles", (sm_cooldown or 120) + bc_cooldown, sm_duration or 15, base_pkg_reduction, False),
+        ("Inner Land Mines", (ilm_cooldown or 130) + bc_cooldown, ilm_duration or 25, base_pkg_reduction, False),
+        ("Poison Swamp", (ps_cooldown or 140) + bc_cooldown, ps_duration or 30, base_pkg_reduction, False),
     ]
     
     start_sim = time.time()
     package_count = 0  # Track total packages across simulation
-    for uw_name, cooldown, duration, pkg_red in uw_configs:
+    for uw_name, cooldown, duration, pkg_red, can_queue in uw_configs:
         package_reductions, is_boss_packages = simulate_package_reductions(
             total_time=total_time,
             pkg_chance=pkg_chance,
@@ -1113,7 +1399,8 @@ def calculate_simulations(
             package_reduction_series=package_reductions,
             is_boss_package_series=is_boss_packages,
             wave_time=wave_time,
-        )
+            can_queue=can_queue,
+        )  # type: ignore[call-overload]
         assert isinstance(df, pd.DataFrame)
         results[uw_name] = df
     
@@ -1132,10 +1419,16 @@ def calculate_simulations(
     # Store effective parameters for display in cards
     effective_params = {}
     for i, uw_name in enumerate(UW_ORDER):
-        _, cooldown, duration, _ = uw_configs[i]
-        base_cd = [bh_cooldown or 46, gt_cooldown or 170, dw_cooldown or 170, cf_cooldown or 180, gb_cooldown or 100][i]
-        base_dur = [bh_duration or 34, gt_duration or 45, dw_duration or 20, cf_duration or 28, gb_duration or 24.5][i]
-        perk_dur = [bh_perk_duration, 0, dw_perk_duration, cf_perk_duration, 0][i]
+        _, cooldown, duration, _, _ = uw_configs[i]
+        base_cd = [
+            bh_cooldown or 46, gt_cooldown or 170, dw_cooldown or 170, cf_cooldown or 180, 
+            gb_cooldown or 100, sm_cooldown or 120, ilm_cooldown or 130, ps_cooldown or 140
+        ][i]
+        base_dur = [
+            bh_duration or 34, gt_duration or 45, dw_duration or 20, cf_duration or 28, 
+            gb_duration or 24.5, sm_duration or 15, ilm_duration or 25, ps_duration or 30
+        ][i]
+        perk_dur = [bh_perk_duration, 0, dw_perk_duration, cf_perk_duration, 0, 0, 0, 0][i]
         
         effective_params[uw_name] = {
             "base_cooldown": base_cd,
@@ -1194,19 +1487,35 @@ def calculate_simulations(
     Output("stats-gb-downtime", "children"),
     Output("stats-gb-interval", "children"),
     Output("stats-gb-card", "style"),
+    Output("stats-sm-params", "children"),
+    Output("stats-sm-uptime", "children"),
+    Output("stats-sm-downtime", "children"),
+    Output("stats-sm-interval", "children"),
+    Output("stats-sm-card", "style"),
+    Output("stats-ilm-params", "children"),
+    Output("stats-ilm-uptime", "children"),
+    Output("stats-ilm-downtime", "children"),
+    Output("stats-ilm-interval", "children"),
+    Output("stats-ilm-card", "style"),
+    Output("stats-ps-params", "children"),
+    Output("stats-ps-uptime", "children"),
+    Output("stats-ps-downtime", "children"),
+    Output("stats-ps-interval", "children"),
+    Output("stats-ps-card", "style"),
     Output("uw-detail-graph", "figure"),
     Output("uw-graph-sync", "figure"),
     Input("uw-simulation-store", "data"),
     Input("uw-detail-selector", "value"),
+    Input("uw-show-cooldown", "value"),
 )
-def render_uw_figures(simulation_data, selected_uw):
+def render_uw_figures(simulation_data, selected_uw, show_cooldown):
     """Render UI components from pre-calculated simulation data."""
     import time
     start_time = time.time()
     
     if simulation_data is None:
-        # Return empty defaults (3 sim details + 25 card outputs + 2 figures = 30)
-        return ["", "", ""] + [""] * 25 + [go.Figure(), go.Figure()]
+        # Return empty defaults (3 sim details + 40 card outputs + 2 figures = 45)
+        return ["", "", ""] + [""] * 40 + [go.Figure(), go.Figure()]
     
     # Extract simulation parameters
     wave_time = simulation_data.get("wave_time", 0)
@@ -1311,9 +1620,14 @@ def render_uw_figures(simulation_data, selected_uw):
     
     # Generate figures from stored DataFrames
     start_figs = time.time()
+    # DEBUG: Uncomment to trace figure generation
+    # print(f"[DEBUG] render_uw_figures: selected_uw={selected_uw}")
     selected_color = UW_CONFIG[selected_uw]["color_rgba"]
-    fig_detail = _make_uw_figure(results[selected_uw], selected_uw, selected_color)
-    fig_sync = _make_sync_figure(results)
+    show_cd = 'show' in show_cooldown if show_cooldown else False
+    fig_detail = _make_uw_figure(results[selected_uw], selected_uw, selected_color, show_cooldown=show_cd)
+    # print(f"[DEBUG] About to call _make_sync_figure with selected_uw={selected_uw}")
+    fig_sync = _make_sync_figure(results, selected_uw=selected_uw)
+    # print(f"[DEBUG] _make_sync_figure returned")
     figs_time = time.time() - start_figs
     elapsed_time = time.time() - start_time
     print(f"[PERF] Figure generation: {figs_time:.3f}s")
@@ -1347,4 +1661,3 @@ else:
     
     app.layout = layout
     server = app.server  # Expose server for gunicorn
-
