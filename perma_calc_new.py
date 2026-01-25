@@ -199,6 +199,13 @@ def _downsample_for_plot(df: pd.DataFrame, max_points: int = 600) -> pd.DataFram
         keep_mask[::step] = True
     return df[keep_mask].copy()
 
+def hex_to_rgba(hex_color, alpha=0.3):
+    hex_color = hex_color.lstrip('#')
+    if len(hex_color) != 6:
+        return f'rgba(0,176,246,{alpha})'  # fallback to blue
+    r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+    return f'rgba({r},{g},{b},{alpha})'
+
 def _make_uw_figure(df: pd.DataFrame, title: str, uw_color: str = "#00B0F6", show_cooldown: bool = True) -> go.Figure:
     df_plot = _downsample_for_plot(df, max_points=800)
     package_mask = df_plot["package_reduction"].to_numpy() > 0
@@ -210,7 +217,7 @@ def _make_uw_figure(df: pd.DataFrame, title: str, uw_color: str = "#00B0F6", sho
     y_top = float(df_plot["remaining_active_time"].max())
     package_y = np.full_like(package_times, y_top, dtype=float)
     fig = go.Figure()
-    fill_color = uw_color + "4D" if len(uw_color) == 7 else uw_color
+    fill_color = hex_to_rgba(uw_color, 0.3)
     fig.add_trace(go.Scatter(x=df_plot["t"], y=uptime_y, mode="lines", name="Uptime", fill="tozeroy", line=dict(color=uw_color, width=1), fillcolor=fill_color, hovertemplate="t=%{x}s<br>time=%{y}s<extra></extra>"))
     if show_cooldown:
         fig.add_trace(go.Scatter(x=df_plot["t"], y=downtime_y, mode="lines", name="Downtime", line=dict(color="#888", width=1), hovertemplate="t=%{x}s<br>time=%{y}s<extra></extra>"))
