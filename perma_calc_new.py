@@ -302,15 +302,6 @@ UW_CONFIG_DF = pd.DataFrame([
 # Now that UW_CONFIG_DF is defined, define UW_ORDER
 UW_ORDER = list(UW_CONFIG_DF['name'])
 
-
-dash.register_page(
-    __name__,
-    path="/perma-calc-hybrid",
-    name="UW PermaCalc (Hybrid)",
-    order=8,
-)
-
-
 def get_uw_param_ids():
     ids = []
     for _, row in UW_CONFIG_DF.iterrows():
@@ -746,3 +737,29 @@ def update_sync_chart(sim_data, selected_uw):
     # Reconstruct all UW DataFrames
     results = {uw: pd.DataFrame(sim_data[uw]["df"]) for uw in sim_data if "df" in sim_data[uw]}
     return _make_sync_figure(results, selected_uw=selected_uw)
+
+if __name__ == "__main__":
+    # Standalone mode: run as independent Dash app
+    app = dash.Dash(
+        __name__,
+        external_stylesheets=[dbc.themes.DARKLY],
+        suppress_callback_exceptions=True
+    )
+    
+    app.layout = layout
+    
+    print("Starting UW PermaCalc in standalone mode...")
+    print("Open your browser and navigate to: http://127.0.0.1:8050")
+    print("Press Ctrl+C to stop the server.")
+    
+    app.run(debug=True, host='127.0.0.1', port=8050)
+else:
+    # Production mode for deployment (e.g., Render.com with gunicorn)
+    app = dash.Dash(
+        __name__,
+        external_stylesheets=[dbc.themes.DARKLY],
+        suppress_callback_exceptions=True
+    )
+    
+    app.layout = layout
+    server = app.server  # Expose server for gunicorn
