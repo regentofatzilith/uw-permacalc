@@ -289,7 +289,7 @@ def _make_sync_figure(results: Dict[str, pd.DataFrame], selected_uw: str | None 
                                 y0=float(y_position - bar_height/2),
                                 y1=float(y_position + bar_height/2),
                                 fillcolor=fillcolor_full,
-                                line=dict(width=0, color='rgba(0,0,0,0)')
+                                line=dict(width=0)
                             )
                     if only_this_active.any():
                         seg_starts = np.where(np.diff(np.concatenate(([0], only_this_active.astype(int)))) == 1)[0]
@@ -304,7 +304,7 @@ def _make_sync_figure(results: Dict[str, pd.DataFrame], selected_uw: str | None 
                                 y0=float(y_position - bar_height/2),
                                 y1=float(y_position + bar_height/2),
                                 fillcolor=fillcolor_partial,
-                                line=dict(width=0, color='rgba(0,0,0,0)')
+                                line=dict(width=0)
                             )
                 else:
                     fig.add_shape(
@@ -314,7 +314,7 @@ def _make_sync_figure(results: Dict[str, pd.DataFrame], selected_uw: str | None 
                         y0=float(y_position - bar_height/2),
                         y1=float(y_position + bar_height/2),
                         fillcolor=fillcolor_full,
-                        line=dict(width=0, color='rgba(0,0,0,0)')
+                        line=dict(width=0)
                     )
     fig.update_layout(template="plotly_dark", title="Sync Chart: UWs sync with {}".format(selected_uw if selected_uw else "(None)"), xaxis_title="t (seconds)", yaxis=dict(tickvals=list(uw_positions.values()), ticktext=list(uw_positions.keys()), range=[-0.5, len(UW_ORDER)-0.5]), yaxis_title="Ultimate Weapon", showlegend=False, margin=dict(l=50, r=100, t=50, b=80))
     return fig
