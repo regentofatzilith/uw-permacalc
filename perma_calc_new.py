@@ -791,8 +791,14 @@ def update_sync_chart(sim_data, selected_uw):
     if not sim_data:
         return go.Figure()
     # Reconstruct all UW DataFrames
-    results = {uw: pd.DataFrame(sim_data[uw]["df"]) for uw in sim_data if "df" in sim_data[uw]}
-    return _make_sync_figure(results, selected_uw=selected_uw)
+        results = {}
+        for uw in sim_data:
+            if "df" in sim_data[uw]:
+                df = pd.DataFrame(sim_data[uw]["df"])
+                # Debug: print first few rows to server log
+                print(f"[DEBUG] {uw} df head:\n", df.head())
+                results[uw] = df
+        return _make_sync_figure(results, selected_uw=selected_uw)
 
 if __name__ == "__main__":
     # Standalone mode: run as independent Dash app
@@ -803,19 +809,64 @@ if __name__ == "__main__":
     )
     
     app.layout = layout
-    
-    print("Starting UW PermaCalc in standalone mode...")
-    print("Open your browser and navigate to: http://127.0.0.1:8050")
-    print("Press Ctrl+C to stop the server.")
-    
-    app.run(debug=True, host='127.0.0.1', port=8050)
-else:
-    # Production mode for deployment (e.g., Render.com with gunicorn)
-    app = dash.Dash(
-        __name__,
-        external_stylesheets=[dbc.themes.DARKLY],
-        suppress_callback_exceptions=True
-    )
-    
-    app.layout = layout
-    server = app.server  # Expose server for gunicorn
+        sync_percentages = {}
+        if selected_uw and selected_uw in results:
+            uw_name = selected_uw
+            df = results[uw_name]
+            y_position = uw_positions[uw_name]
+            is_active = np.asarray(df["is_active"].values, dtype=bool)
+            t_values = np.asarray(df["t"].values, dtype=float).flatten()
+            is_active_padded = np.concatenate([np.array([False]), is_active, np.array([False])])
+            diff = np.diff(is_active_padded.astype(int))
+            starts = np.where(diff == 1)[0]
+            ends = np.where(diff == -1)[0]
+            for start_idx, end_idx in zip(starts, ends):
+                t_start = float(t_values[start_idx]) if hasattr(t_values[start_idx], 'item') else t_values[start_idx]
+                t_end = float(t_values[end_idx - 1]) + 1 if hasattr(t_values[end_idx - 1], 'item') else t_values[end_idx - 1] + 1
+                x0 = float(t_start)
+                x1 = float(t_end)
+                y0 = float(y_position - bar_height/2)
+                y1 = float(y_position + bar_height/2)
+                if all(np.isfinite([x0, x1, y0, y1])):
+                    shapes_list.append({
+                        "type": "rect",
+                        "x0": x0,
+                        "x1": x1,
+                        "y0": y0,
+                        "y1": y1,
+                        "fillcolor": fillcolor_full
+                    })
+            # Calculate sync percentages for all UWs with respect to selected UW
+            selected_mask = is_active
+            for other_uw in UW_ORDER:
+                if other_uw in results and other_uw != selected_uw:
+                    other_mask = np.asarray(results[other_uw]["is_active"].values, dtype=bool)
+                    if len(selected_mask) == len(other_mask) and selected_mask.sum() > 0:
+                        sync_pct = 100.0 * np.sum(selected_mask & other_mask) / np.sum(selected_mask)
+                        sync_percentages[other_uw] = sync_pct
+                    else:
+                        sync_percentages[other_uw] = None
+            sync_percentages[selected_uw] = 100.0
+        if shapes_list:
+            fig.update_layout(shapes=shapes_list)
+        # Update y-axis labels to include sync percentages if available
+        y_ticktext = []
+        for uw in UW_ORDER:
+            if uw in sync_percentages and sync_percentages[uw] is not None:
+                y_ticktext.append(f"{uw} (Sync: {sync_percentages[uw]:.1f}%)")
+            else:
+                y_ticktext.append(uw)
+        chart_title = f"Sync Chart: UWs sync with {selected_uw if selected_uw else '(None)'}"
+        fig.update_layout(
+            template="plotly_dark",
+            title=chart_title,
+            xaxis_title="t (seconds)",
+            yaxis=dict(
+                tickvals=list(uw_positions.values()),
+                ticktext=y_ticktext,
+                range=[-0.5, len(UW_ORDER)-0.5]
+            ),
+            yaxis_title="Ultimate Weapon",
+            showlegend=False,
+            margin=dict(l=50, r=100, t=50, b=80)
+        )
