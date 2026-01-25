@@ -253,6 +253,9 @@ def _make_sync_figure(results: Dict[str, pd.DataFrame], selected_uw: str | None 
     uw_positions = {uw_name: i for i, uw_name in enumerate(UW_ORDER)}
     bar_height = 0.8
     selected_active = None
+    # Use rgba for fillcolor
+    fillcolor_full = "rgba(0,176,246,1.0)"  # #00B0F6, 100%
+    fillcolor_partial = "rgba(0,176,246,0.3)"  # #00B0F6, 30%
     if selected_uw and selected_uw in results:
         selected_active = np.asarray(results[selected_uw]["is_active"].values, dtype=bool)
     for uw_name in UW_ORDER:
@@ -279,16 +282,16 @@ def _make_sync_figure(results: Dict[str, pd.DataFrame], selected_uw: str | None 
                         for seg_start, seg_end in zip(seg_starts, seg_ends):
                             seg_t_start = float(t_values[start_idx + seg_start]) if hasattr(t_values[start_idx + seg_start], 'item') else t_values[start_idx + seg_start]
                             seg_t_end = float(t_values[start_idx + seg_end - 1]) + 1 if hasattr(t_values[start_idx + seg_end - 1], 'item') else t_values[start_idx + seg_end - 1] + 1
-                            fig.add_shape(type="rect", x0=seg_t_start, x1=seg_t_end, y0=y_position - bar_height/2, y1=y_position + bar_height/2, fillcolor="#00B0F6", opacity=1.0, line_width=0)
+                            fig.add_shape(type="rect", x0=seg_t_start, x1=seg_t_end, y0=y_position - bar_height/2, y1=y_position + bar_height/2, fillcolor=fillcolor_full, line_width=0)
                     if only_this_active.any():
                         seg_starts = np.where(np.diff(np.concatenate(([0], only_this_active.astype(int)))) == 1)[0]
                         seg_ends = np.where(np.diff(np.concatenate((only_this_active.astype(int), [0]))) == -1)[0]
                         for seg_start, seg_end in zip(seg_starts, seg_ends):
                             seg_t_start = float(t_values[start_idx + seg_start]) if hasattr(t_values[start_idx + seg_start], 'item') else t_values[start_idx + seg_start]
                             seg_t_end = float(t_values[start_idx + seg_end - 1]) + 1 if hasattr(t_values[start_idx + seg_end - 1], 'item') else t_values[start_idx + seg_end - 1] + 1
-                            fig.add_shape(type="rect", x0=seg_t_start, x1=seg_t_end, y0=y_position - bar_height/2, y1=y_position + bar_height/2, fillcolor="#00B0F6", opacity=0.3, line_width=0)
+                            fig.add_shape(type="rect", x0=seg_t_start, x1=seg_t_end, y0=y_position - bar_height/2, y1=y_position + bar_height/2, fillcolor=fillcolor_partial, line_width=0)
                 else:
-                    fig.add_shape(type="rect", x0=t_start, x1=t_end, y0=y_position - bar_height/2, y1=y_position + bar_height/2, fillcolor="#00B0F6", opacity=1.0, line_width=0)
+                    fig.add_shape(type="rect", x0=t_start, x1=t_end, y0=y_position - bar_height/2, y1=y_position + bar_height/2, fillcolor=fillcolor_full, line_width=0)
     fig.update_layout(template="plotly_dark", title="Sync Chart: UWs sync with {}".format(selected_uw if selected_uw else "(None)"), xaxis_title="t (seconds)", yaxis=dict(tickvals=list(uw_positions.values()), ticktext=list(uw_positions.keys()), range=[-0.5, len(UW_ORDER)-0.5]), yaxis_title="Ultimate Weapon", showlegend=False, margin=dict(l=50, r=100, t=50, b=80))
     return fig
 
@@ -362,7 +365,8 @@ def hybrid_calculate_simulations(
     cf_perk_duration = Farming_Perks["Chrono_Field_Duration"] if perks_on else 0
 
     # Multiverse Nexus
-    mvn_offset = MVN_EFFECTS.get(mvn_state.split()[0], None) if mvn_state else None
+    mvn_key = mvn_state.split()[0] if mvn_state else "None"
+    mvn_offset = MVN_EFFECTS.get(mvn_key, None)
 
     # Create UW objects
     uws = create_uw_objects()
@@ -389,7 +393,7 @@ def hybrid_calculate_simulations(
     bh = next(u for u in uws if u.name == "Black Hole")
     gt = next(u for u in uws if u.name == "Golden Tower")
     dw = next(u for u in uws if u.name == "Death Wave")
-    if mvn_offset is not None:
+    if mvn_key != "None" and mvn_offset is not None:
         avg_cooldown = (bh.effective_cooldown + gt.effective_cooldown + dw.effective_cooldown) / 3
         synced_cooldown = avg_cooldown + mvn_offset
         bh.effective_cooldown = synced_cooldown
@@ -467,25 +471,41 @@ def update_stat_cards(sim_data):
     if not sim_data:
         return ["", "", "", "", {}] * len(UW_CONFIG_DF)
     outputs = []
+    def fmt(val, unit="s", is_pct=False):
+        if val is None:
+            return "N/A"
+        if is_pct:
+            return f"{val:.1f}%"
+        if isinstance(val, (int, float)):
+            if abs(val - int(val)) < 1e-6:
+                return f"{int(val)}{unit}"
+            else:
+                return f"{val:.1f}{unit}"
+        return str(val)
+
     for _, row in UW_CONFIG_DF.iterrows():
         uw = row['name']
         uw_id = uw.lower().replace(' ', '-')
         params = sim_data[uw]["params"]
         stats = sim_data[uw]["stats"]
         # Format params
-        if params['base_cooldown'] == params['effective_cooldown']:
-            cd_text = f"CD: {params['base_cooldown']}s"
+        base_cd = params['base_cooldown']
+        eff_cd = params['effective_cooldown']
+        base_dur = params['base_duration']
+        eff_dur = params['effective_duration']
+        if base_cd == eff_cd:
+            cd_text = f"CD: {fmt(base_cd)}"
         else:
-            cd_text = f"CD: {params['base_cooldown']}s → {params['effective_cooldown']}s"
-        if params['base_duration'] == params['effective_duration']:
-            dur_text = f"Dur: {params['base_duration']}s"
+            cd_text = f"CD: {fmt(base_cd)} → {fmt(eff_cd)}"
+        if base_dur == eff_dur:
+            dur_text = f"Dur: {fmt(base_dur)}"
         else:
-            dur_text = f"Dur: {params['base_duration']}s → {params['effective_duration']}s"
+            dur_text = f"Dur: {fmt(base_dur)} → {fmt(eff_dur)}"
         params_text = f"{cd_text} | {dur_text}"
         # Format stats
-        uptime_text = f"Uptime: {stats['uptime_pct']:.1f}%" if stats['uptime_pct'] is not None else "Uptime: N/A"
-        downtime_text = f"Downtime: Avg: {stats['avg_downtime']:.1f}s" if stats['avg_downtime'] is not None else "Downtime: N/A"
-        interval_text = f"Activation Interval: {stats['avg_activation_interval']:.1f}s" if stats['avg_activation_interval'] is not None else "Activation Interval: N/A"
+        uptime_text = f"Uptime: {fmt(stats['uptime_pct'], is_pct=True)}" if stats['uptime_pct'] is not None else "Uptime: N/A"
+        downtime_text = f"Downtime: Avg: {fmt(stats['avg_downtime'])}" if stats['avg_downtime'] is not None else "Downtime: N/A"
+        interval_text = f"Activation Interval: {fmt(stats['avg_activation_interval'])}" if stats['avg_activation_interval'] is not None else "Activation Interval: N/A"
         card_style = {'borderLeft': f'4px solid {row["color_hex"]}'}
         outputs.extend([params_text, uptime_text, downtime_text, interval_text, card_style])
     return outputs
