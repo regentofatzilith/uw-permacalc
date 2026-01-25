@@ -260,6 +260,7 @@ def _make_sync_figure(results: Dict[str, pd.DataFrame], selected_uw: str | None 
         selected_active = np.asarray(results[selected_uw]["is_active"].values, dtype=bool)
     shape_count = 0
     max_shapes = 500
+    shapes_list = []
     for uw_name in UW_ORDER:
         if uw_name in results:
             df = results[uw_name]
@@ -293,14 +294,14 @@ def _make_sync_figure(results: Dict[str, pd.DataFrame], selected_uw: str | None 
                             y0 = float(y_position - bar_height/2)
                             y1 = float(y_position + bar_height/2)
                             if all(np.isfinite([x0, x1, y0, y1])):
-                                fig.add_shape(
-                                    type="rect",
-                                    x0=x0,
-                                    x1=x1,
-                                    y0=y0,
-                                    y1=y1,
-                                    fillcolor=fillcolor_full
-                                )
+                                shapes_list.append({
+                                    "type": "rect",
+                                    "x0": x0,
+                                    "x1": x1,
+                                    "y0": y0,
+                                    "y1": y1,
+                                    "fillcolor": fillcolor_full
+                                })
                                 shape_count += 1
                     if only_this_active.any():
                         seg_starts = np.where(np.diff(np.concatenate(([0], only_this_active.astype(int)))) == 1)[0]
@@ -315,14 +316,14 @@ def _make_sync_figure(results: Dict[str, pd.DataFrame], selected_uw: str | None 
                             y0 = float(y_position - bar_height/2)
                             y1 = float(y_position + bar_height/2)
                             if all(np.isfinite([x0, x1, y0, y1])):
-                                fig.add_shape(
-                                    type="rect",
-                                    x0=x0,
-                                    x1=x1,
-                                    y0=y0,
-                                    y1=y1,
-                                    fillcolor=fillcolor_partial
-                                )
+                                shapes_list.append({
+                                    "type": "rect",
+                                    "x0": x0,
+                                    "x1": x1,
+                                    "y0": y0,
+                                    "y1": y1,
+                                    "fillcolor": fillcolor_partial
+                                })
                                 shape_count += 1
                 else:
                     if shape_count >= max_shapes:
@@ -332,15 +333,17 @@ def _make_sync_figure(results: Dict[str, pd.DataFrame], selected_uw: str | None 
                     y0 = float(y_position - bar_height/2)
                     y1 = float(y_position + bar_height/2)
                     if all(np.isfinite([x0, x1, y0, y1])):
-                        fig.add_shape(
-                            type="rect",
-                            x0=x0,
-                            x1=x1,
-                            y0=y0,
-                            y1=y1,
-                            fillcolor=fillcolor_full
-                        )
+                        shapes_list.append({
+                            "type": "rect",
+                            "x0": x0,
+                            "x1": x1,
+                            "y0": y0,
+                            "y1": y1,
+                            "fillcolor": fillcolor_full
+                        })
                         shape_count += 1
+    if shapes_list:
+        fig.update_layout(shapes=shapes_list)
     fig.update_layout(template="plotly_dark", title="Sync Chart: UWs sync with {}".format(selected_uw if selected_uw else "(None)"), xaxis_title="t (seconds)", yaxis=dict(tickvals=list(uw_positions.values()), ticktext=list(uw_positions.keys()), range=[-0.5, len(UW_ORDER)-0.5]), yaxis_title="Ultimate Weapon", showlegend=False, margin=dict(l=50, r=100, t=50, b=80))
     return fig
 
