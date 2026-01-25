@@ -258,6 +258,8 @@ def _make_sync_figure(results: Dict[str, pd.DataFrame], selected_uw: str | None 
     fillcolor_partial = "rgba(0,176,246,0.3)"  # #00B0F6, 30%
     if selected_uw and selected_uw in results:
         selected_active = np.asarray(results[selected_uw]["is_active"].values, dtype=bool)
+    shape_count = 0
+    max_shapes = 500
     for uw_name in UW_ORDER:
         if uw_name in results:
             df = results[uw_name]
@@ -269,6 +271,8 @@ def _make_sync_figure(results: Dict[str, pd.DataFrame], selected_uw: str | None 
             starts = np.where(diff == 1)[0]
             ends = np.where(diff == -1)[0]
             for start_idx, end_idx in zip(starts, ends):
+                if shape_count >= max_shapes:
+                    break
                 t_start = float(t_values[start_idx]) if hasattr(t_values[start_idx], 'item') else t_values[start_idx]
                 t_end = float(t_values[end_idx - 1]) + 1 if hasattr(t_values[end_idx - 1], 'item') else t_values[end_idx - 1] + 1
                 if selected_active is not None:
@@ -280,6 +284,8 @@ def _make_sync_figure(results: Dict[str, pd.DataFrame], selected_uw: str | None 
                         seg_starts = np.where(np.diff(np.concatenate(([0], both_active.astype(int)))) == 1)[0]
                         seg_ends = np.where(np.diff(np.concatenate((both_active.astype(int), [0]))) == -1)[0]
                         for seg_start, seg_end in zip(seg_starts, seg_ends):
+                            if shape_count >= max_shapes:
+                                break
                             seg_t_start = float(t_values[start_idx + seg_start]) if hasattr(t_values[start_idx + seg_start], 'item') else t_values[start_idx + seg_start]
                             seg_t_end = float(t_values[start_idx + seg_end - 1]) + 1 if hasattr(t_values[start_idx + seg_end - 1], 'item') else t_values[start_idx + seg_end - 1] + 1
                             x0 = float(seg_t_start)
@@ -295,10 +301,13 @@ def _make_sync_figure(results: Dict[str, pd.DataFrame], selected_uw: str | None 
                                     y1=y1,
                                     fillcolor=fillcolor_full
                                 )
+                                shape_count += 1
                     if only_this_active.any():
                         seg_starts = np.where(np.diff(np.concatenate(([0], only_this_active.astype(int)))) == 1)[0]
                         seg_ends = np.where(np.diff(np.concatenate((only_this_active.astype(int), [0]))) == -1)[0]
                         for seg_start, seg_end in zip(seg_starts, seg_ends):
+                            if shape_count >= max_shapes:
+                                break
                             seg_t_start = float(t_values[start_idx + seg_start]) if hasattr(t_values[start_idx + seg_start], 'item') else t_values[start_idx + seg_start]
                             seg_t_end = float(t_values[start_idx + seg_end - 1]) + 1 if hasattr(t_values[start_idx + seg_end - 1], 'item') else t_values[start_idx + seg_end - 1] + 1
                             x0 = float(seg_t_start)
@@ -314,7 +323,10 @@ def _make_sync_figure(results: Dict[str, pd.DataFrame], selected_uw: str | None 
                                     y1=y1,
                                     fillcolor=fillcolor_partial
                                 )
+                                shape_count += 1
                 else:
+                    if shape_count >= max_shapes:
+                        break
                     x0 = float(t_start)
                     x1 = float(t_end)
                     y0 = float(y_position - bar_height/2)
@@ -328,6 +340,7 @@ def _make_sync_figure(results: Dict[str, pd.DataFrame], selected_uw: str | None 
                             y1=y1,
                             fillcolor=fillcolor_full
                         )
+                        shape_count += 1
     fig.update_layout(template="plotly_dark", title="Sync Chart: UWs sync with {}".format(selected_uw if selected_uw else "(None)"), xaxis_title="t (seconds)", yaxis=dict(tickvals=list(uw_positions.values()), ticktext=list(uw_positions.keys()), range=[-0.5, len(UW_ORDER)-0.5]), yaxis_title="Ultimate Weapon", showlegend=False, margin=dict(l=50, r=100, t=50, b=80))
     return fig
 
