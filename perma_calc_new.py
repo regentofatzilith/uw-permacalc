@@ -282,37 +282,52 @@ def _make_sync_figure(results: Dict[str, pd.DataFrame], selected_uw: str | None 
                         for seg_start, seg_end in zip(seg_starts, seg_ends):
                             seg_t_start = float(t_values[start_idx + seg_start]) if hasattr(t_values[start_idx + seg_start], 'item') else t_values[start_idx + seg_start]
                             seg_t_end = float(t_values[start_idx + seg_end - 1]) + 1 if hasattr(t_values[start_idx + seg_end - 1], 'item') else t_values[start_idx + seg_end - 1] + 1
-                            fig.add_shape(
-                                type="rect",
-                                x0=float(seg_t_start),
-                                x1=float(seg_t_end),
-                                y0=float(y_position - bar_height/2),
-                                y1=float(y_position + bar_height/2),
-                                fillcolor=fillcolor_full
-                            )
+                            x0 = float(seg_t_start)
+                            x1 = float(seg_t_end)
+                            y0 = float(y_position - bar_height/2)
+                            y1 = float(y_position + bar_height/2)
+                            if all(np.isfinite([x0, x1, y0, y1])):
+                                fig.add_shape(
+                                    type="rect",
+                                    x0=x0,
+                                    x1=x1,
+                                    y0=y0,
+                                    y1=y1,
+                                    fillcolor=fillcolor_full
+                                )
                     if only_this_active.any():
                         seg_starts = np.where(np.diff(np.concatenate(([0], only_this_active.astype(int)))) == 1)[0]
                         seg_ends = np.where(np.diff(np.concatenate((only_this_active.astype(int), [0]))) == -1)[0]
                         for seg_start, seg_end in zip(seg_starts, seg_ends):
                             seg_t_start = float(t_values[start_idx + seg_start]) if hasattr(t_values[start_idx + seg_start], 'item') else t_values[start_idx + seg_start]
                             seg_t_end = float(t_values[start_idx + seg_end - 1]) + 1 if hasattr(t_values[start_idx + seg_end - 1], 'item') else t_values[start_idx + seg_end - 1] + 1
-                            fig.add_shape(
-                                type="rect",
-                                x0=float(seg_t_start),
-                                x1=float(seg_t_end),
-                                y0=float(y_position - bar_height/2),
-                                y1=float(y_position + bar_height/2),
-                                fillcolor=fillcolor_partial
-                            )
+                            x0 = float(seg_t_start)
+                            x1 = float(seg_t_end)
+                            y0 = float(y_position - bar_height/2)
+                            y1 = float(y_position + bar_height/2)
+                            if all(np.isfinite([x0, x1, y0, y1])):
+                                fig.add_shape(
+                                    type="rect",
+                                    x0=x0,
+                                    x1=x1,
+                                    y0=y0,
+                                    y1=y1,
+                                    fillcolor=fillcolor_partial
+                                )
                 else:
-                    fig.add_shape(
-                        type="rect",
-                        x0=float(t_start),
-                        x1=float(t_end),
-                        y0=float(y_position - bar_height/2),
-                        y1=float(y_position + bar_height/2),
-                        fillcolor=fillcolor_full
-                    )
+                    x0 = float(t_start)
+                    x1 = float(t_end)
+                    y0 = float(y_position - bar_height/2)
+                    y1 = float(y_position + bar_height/2)
+                    if all(np.isfinite([x0, x1, y0, y1])):
+                        fig.add_shape(
+                            type="rect",
+                            x0=x0,
+                            x1=x1,
+                            y0=y0,
+                            y1=y1,
+                            fillcolor=fillcolor_full
+                        )
     fig.update_layout(template="plotly_dark", title="Sync Chart: UWs sync with {}".format(selected_uw if selected_uw else "(None)"), xaxis_title="t (seconds)", yaxis=dict(tickvals=list(uw_positions.values()), ticktext=list(uw_positions.keys()), range=[-0.5, len(UW_ORDER)-0.5]), yaxis_title="Ultimate Weapon", showlegend=False, margin=dict(l=50, r=100, t=50, b=80))
     return fig
 
