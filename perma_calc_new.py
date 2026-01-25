@@ -259,9 +259,39 @@ def _make_sync_figure(results: Dict[str, pd.DataFrame], selected_uw: str | None 
     if selected_uw and selected_uw in results:
         selected_active = np.asarray(results[selected_uw]["is_active"].values, dtype=bool)
     shape_count = 0
-    max_shapes = 500
+    max_shapes = 2000
     shapes_list = []
+    # Always draw all segments for the selected UW
+    if selected_uw and selected_uw in results:
+        uw_name = selected_uw
+        df = results[uw_name]
+        y_position = uw_positions[uw_name]
+        is_active = np.asarray(df["is_active"].values, dtype=bool)
+        t_values = np.asarray(df["t"].values, dtype=float).flatten()
+        is_active_padded = np.concatenate([np.array([False]), is_active, np.array([False])])
+        diff = np.diff(is_active_padded.astype(int))
+        starts = np.where(diff == 1)[0]
+        ends = np.where(diff == -1)[0]
+        for start_idx, end_idx in zip(starts, ends):
+            t_start = float(t_values[start_idx]) if hasattr(t_values[start_idx], 'item') else t_values[start_idx]
+            t_end = float(t_values[end_idx - 1]) + 1 if hasattr(t_values[end_idx - 1], 'item') else t_values[end_idx - 1] + 1
+            x0 = float(t_start)
+            x1 = float(t_end)
+            y0 = float(y_position - bar_height/2)
+            y1 = float(y_position + bar_height/2)
+            if all(np.isfinite([x0, x1, y0, y1])):
+                shapes_list.append({
+                    "type": "rect",
+                    "x0": x0,
+                    "x1": x1,
+                    "y0": y0,
+                    "y1": y1,
+                    "fillcolor": fillcolor_full
+                })
+    # Draw up to max_shapes for the other UWs
     for uw_name in UW_ORDER:
+        if uw_name == selected_uw:
+            continue
         if uw_name in results:
             df = results[uw_name]
             y_position = uw_positions[uw_name]
@@ -276,72 +306,20 @@ def _make_sync_figure(results: Dict[str, pd.DataFrame], selected_uw: str | None 
                     break
                 t_start = float(t_values[start_idx]) if hasattr(t_values[start_idx], 'item') else t_values[start_idx]
                 t_end = float(t_values[end_idx - 1]) + 1 if hasattr(t_values[end_idx - 1], 'item') else t_values[end_idx - 1] + 1
-                if selected_active is not None:
-                    segment_active = np.asarray(is_active[start_idx:end_idx])
-                    segment_selected = np.asarray(selected_active[start_idx:end_idx])
-                    both_active = segment_active & segment_selected
-                    only_this_active = segment_active & ~segment_selected
-                    if both_active.any():
-                        seg_starts = np.where(np.diff(np.concatenate(([0], both_active.astype(int)))) == 1)[0]
-                        seg_ends = np.where(np.diff(np.concatenate((both_active.astype(int), [0]))) == -1)[0]
-                        for seg_start, seg_end in zip(seg_starts, seg_ends):
-                            if shape_count >= max_shapes:
-                                break
-                            seg_t_start = float(t_values[start_idx + seg_start]) if hasattr(t_values[start_idx + seg_start], 'item') else t_values[start_idx + seg_start]
-                            seg_t_end = float(t_values[start_idx + seg_end - 1]) + 1 if hasattr(t_values[start_idx + seg_end - 1], 'item') else t_values[start_idx + seg_end - 1] + 1
-                            x0 = float(seg_t_start)
-                            x1 = float(seg_t_end)
-                            y0 = float(y_position - bar_height/2)
-                            y1 = float(y_position + bar_height/2)
-                            if all(np.isfinite([x0, x1, y0, y1])):
-                                shapes_list.append({
-                                    "type": "rect",
-                                    "x0": x0,
-                                    "x1": x1,
-                                    "y0": y0,
-                                    "y1": y1,
-                                    "fillcolor": fillcolor_full
-                                })
-                                shape_count += 1
-                    if only_this_active.any():
-                        seg_starts = np.where(np.diff(np.concatenate(([0], only_this_active.astype(int)))) == 1)[0]
-                        seg_ends = np.where(np.diff(np.concatenate((only_this_active.astype(int), [0]))) == -1)[0]
-                        for seg_start, seg_end in zip(seg_starts, seg_ends):
-                            if shape_count >= max_shapes:
-                                break
-                            seg_t_start = float(t_values[start_idx + seg_start]) if hasattr(t_values[start_idx + seg_start], 'item') else t_values[start_idx + seg_start]
-                            seg_t_end = float(t_values[start_idx + seg_end - 1]) + 1 if hasattr(t_values[start_idx + seg_end - 1], 'item') else t_values[start_idx + seg_end - 1] + 1
-                            x0 = float(seg_t_start)
-                            x1 = float(seg_t_end)
-                            y0 = float(y_position - bar_height/2)
-                            y1 = float(y_position + bar_height/2)
-                            if all(np.isfinite([x0, x1, y0, y1])):
-                                shapes_list.append({
-                                    "type": "rect",
-                                    "x0": x0,
-                                    "x1": x1,
-                                    "y0": y0,
-                                    "y1": y1,
-                                    "fillcolor": fillcolor_partial
-                                })
-                                shape_count += 1
-                else:
-                    if shape_count >= max_shapes:
-                        break
-                    x0 = float(t_start)
-                    x1 = float(t_end)
-                    y0 = float(y_position - bar_height/2)
-                    y1 = float(y_position + bar_height/2)
-                    if all(np.isfinite([x0, x1, y0, y1])):
-                        shapes_list.append({
-                            "type": "rect",
-                            "x0": x0,
-                            "x1": x1,
-                            "y0": y0,
-                            "y1": y1,
-                            "fillcolor": fillcolor_full
-                        })
-                        shape_count += 1
+                x0 = float(t_start)
+                x1 = float(t_end)
+                y0 = float(y_position - bar_height/2)
+                y1 = float(y_position + bar_height/2)
+                if all(np.isfinite([x0, x1, y0, y1])):
+                    shapes_list.append({
+                        "type": "rect",
+                        "x0": x0,
+                        "x1": x1,
+                        "y0": y0,
+                        "y1": y1,
+                        "fillcolor": fillcolor_full
+                    })
+                    shape_count += 1
     if shapes_list:
         fig.update_layout(shapes=shapes_list)
     fig.update_layout(template="plotly_dark", title="Sync Chart: UWs sync with {}".format(selected_uw if selected_uw else "(None)"), xaxis_title="t (seconds)", yaxis=dict(tickvals=list(uw_positions.values()), ticktext=list(uw_positions.keys()), range=[-0.5, len(UW_ORDER)-0.5]), yaxis_title="Ultimate Weapon", showlegend=False, margin=dict(l=50, r=100, t=50, b=80))
